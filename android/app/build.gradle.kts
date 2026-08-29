@@ -10,10 +10,10 @@ plugins {
 }
 
 // Release signing is driven by a gitignored keystore.properties at the android/
-// project root (see keystore.properties.example). It is absent on CI and on any
-// checkout that only builds debug, so every use is guarded by exists(): without
-// it the release build stays unsigned and Play App Signing (or a later manual
-// sign) takes over.
+// project root (see keystore.properties.example). When that file is missing,
+// release falls back to the SDK debug keystore (`~/.android/debug.keystore`)
+// so a local `assembleRelease` is installable. Play / a real upload key still
+// go through keystore.properties when it is present.
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) {
@@ -84,12 +84,6 @@ android {
         versionCode = rayVersionCode
         versionName = rayVersion
 
-        // App-name placeholders substituted into the manifest labels. The debug
-        // build type overrides these (see below) so the dev build installs as a
-        // separate app with a distinct name in the launcher and share sheet.
-        manifestPlaceholders["appName"] = "Rayfish"
-        manifestPlaceholders["shareLabel"] = "Share with Rayfish"
-
         // ray-mobile only builds these two ABIs for now (device + emulator).
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
@@ -130,16 +124,17 @@ android {
             // A build type can only suffix the applicationId (a full override
             // needs product flavors), so the dev package is xyz.rayfish.android.dev.
             applicationIdSuffix = ".dev"
-            manifestPlaceholders["appName"] = "Rayfish Dev"
-            manifestPlaceholders["shareLabel"] = "Share with Rayfish Dev"
+            // Launcher / share-sheet names come from src/debug/res/values/strings.xml
+            // (`app_name`, `share_with_rayfish`) so they stay distinct from the
+            // release install without a second copy of the localized catalogs.
         }
         release {
             isMinifyEnabled = false
             isDebuggable = false
-            // Sign with the release keystore only when it is configured; otherwise
-            // leave the build unsigned for Play App Signing to handle.
-            if (keystorePropertiesFile.exists()) {
-                signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -217,8 +212,18 @@ val cargoNdkBuild = tasks.register<Exec>("cargoNdkBuild") {
     description = "Cross-compile ray-mobile into src/main/jniLibs for each ABI"
     workingDir = repoRoot
 
-    val ndkHome = System.getenv("ANDROID_NDK_HOME")
-        ?: "${System.getenv("ANDROID_HOME") ?: "${System.getProperty("user.home")}/Library/Android/sdk"}/ndk/27.2.12479018"
+    val defaultSdk = if (OperatingSystem.current().isWindows) {
+        File(System.getProperty("user.home"), "AppData/Local/Android/Sdk")
+    } else {
+        File(System.getProperty("user.home"), "Library/Android/sdk")
+    }
+    val ndkHome = File(
+        System.getenv("ANDROID_NDK_HOME")
+            ?: File(
+                System.getenv("ANDROID_HOME") ?: defaultSdk.absolutePath,
+                "ndk/27.2.12479018",
+            ).absolutePath,
+    ).absolutePath
     environment("ANDROID_NDK_HOME", ndkHome)
 
     // Android Studio launched from the Dock/Finder does not inherit the shell
