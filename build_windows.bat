@@ -69,7 +69,9 @@ if "!OLD_REMOVED!"=="1" (
 echo(
 
 call :show_progress 4 %PROG_TOTAL% "cargo build --release --bin ray"
-"%CARGO%" -q build --release --locked --target %TARGET% --features desktop --bin ray
+echo     Release build of ray (WebView2). First time can take several minutes.
+echo     Crate names will print below; a long pause on "Compiling ray" is normal.
+"%CARGO%" build --release --locked --target %TARGET% --features desktop --bin ray
 if errorlevel 1 (
   call :fail "cargo build --bin ray failed"
   goto :end_fail
