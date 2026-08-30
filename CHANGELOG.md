@@ -8,6 +8,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Ray name on each Windows dashboard network card.** Under your hostname and
+  mesh IPv6, the card shows `hostname.network.ray`. Click it to copy, same as
+  the IPv6.
+
+- **Grant coordinator from the Windows dashboard.** A coordinator sees a
+  button to the left of ping on each online peer. It runs `ray admin add`
+  after a confirm, so another machine can hold the network key without the
+  console.
+
+- **Desktop GUI language.** `ray gui` stores the language in `bm-rayfish.json`
+  beside the exe. Built-in blocks are Traditional Chinese, Simplified Chinese,
+  Japanese, and English; copy a block to add another. Native window title,
+  tray labels, and every dashboard string read that file. Command names in the
+  console and CLI output stay English.
+
 - **`ray files reject <id>`.** Turn down an incoming file offer instead of
   leaving it sitting in the queue. The offer is dropped without being fetched;
   the sender is not told, so it is the same as never picking it up. The
@@ -51,6 +66,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Windows dashboard: mesh actions stay off while the service is stopped.**
+  With the daemon down, Turn VPN on/off, Share services, Join, Create, Invite,
+  Ping, Leave, Kick, Grant coordinator, and the Needs attention actions are
+  greyed out (hover says to start the service first). Start service remains
+  the way back in.
+
+- **Windows GUI language lives in `bm-rayfish.json`.** Every dashboard string
+  (buttons, toasts, dialogs) is in that file beside the exe, together with the
+  tray labels. Copy a language block to add one of your own; missing keys are
+  filled from English the next time the GUI starts. The language button still
+  cycles Traditional Chinese, Simplified Chinese, Japanese, English, then any
+  extra languages you added.
+
+- **Windows: double-clicking `ray.exe` opens the GUI.** With no arguments and
+  no parent console (Explorer), the binary used to print clap usage and exit,
+  which looks like a window that flashes and dies. It now starts `ray gui`.
+  Typing `ray` in a terminal still shows help.
+
+- **Windows GUI is an app window.** `ray gui` hosts the dashboard in WebView2
+  instead of your default browser. The window is a compact fixed size, grows
+  when Advanced is open, starts at
+  (100, 100), minimizes to the tray, and closing it quits. A second launch
+  silently replaces the first. `--no-open` still only prints the URL. The
+  portable zip is `bm-rayfish.exe` plus `wintun.dll` (the signed tunnel
+  driver cannot live inside the PE).
+
 - **`ray status` shows a group before its coordinator answers.** Restoring a
   saved network needs its signed record and a coordinator that replies, which
   after a reboot is up to a minute of backoff. Until then the group rendered as
@@ -68,6 +109,26 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   itself.
 
 ### Fixed
+
+- **Invite stays locked while a Windows dashboard network is restoring.** The
+  button was still clickable on a group that had not come back online yet, and
+  minting then failed. It is greyed out until restore finishes (hover says to
+  wait).
+
+- **Disabled Windows dashboard buttons no longer light up on hover.** Create
+  network and Invite kept the rose hover while the service was stopped, even
+  though they could not be clicked.
+
+- **Windows dashboard error toasts showed only `error`.** A failed action prints
+  `✗ error` on the first line and the reason on the next; the toast took the
+  first line, so it read as English "X error". It now uses the detail line and
+  translates the common daemon messages (invalid name, network still restoring,
+  spent invite, and the rest of the dashboard actions).
+
+- **The Windows dashboard kept listing saved networks while they restore.** After
+  a service restart the daemon still had the group on disk, but the GUI only
+  drew live networks, so the card vanished until restore finished and looked
+  like the network had been forgotten.
 
 - **CLI text stays readable on light terminals.** Value and headline text was
   hard-coded to near-white grays that vanish on a light background. Both now

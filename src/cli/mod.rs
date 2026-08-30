@@ -23,6 +23,9 @@ mod exit_node;
 mod files;
 mod firewall;
 mod gui;
+mod gui_settings;
+#[cfg(windows)]
+mod gui_win;
 pub(crate) mod help;
 mod invite;
 mod logs;

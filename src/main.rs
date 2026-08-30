@@ -241,14 +241,14 @@ pub(crate) enum Command {
         #[arg(long)]
         install: bool,
     },
-    /// Start a local browser GUI
+    /// Start a local desktop GUI
     ///
     /// Covers the common workflows and every CLI command.
     Gui {
         /// Localhost port to listen on (0 chooses a free port)
         #[arg(long, default_value_t = 0)]
         port: u16,
-        /// Print the URL without trying to open a browser
+        /// Print the URL without opening a window
         #[arg(long)]
         no_open: bool,
     },
@@ -1381,8 +1381,8 @@ async fn run() -> Result<()> {
     // Not `Cli::parse()`: the command list in `-h` is grouped, which clap cannot
     // express on subcommands, so the parser comes from `cli::help` with a
     // template that renders the grouping in place of clap's flat list.
-    let cli =
-        Cli::from_arg_matches(&cli::help::command().get_matches()).unwrap_or_else(|e| e.exit());
+    let cli = Cli::from_arg_matches(&cli::help::command().get_matches_from(cli::argv_for_cli()))
+        .unwrap_or_else(|e| e.exit());
     if json_requested(&cli.command) {
         JSON_FLAG.store(true, atomic::Ordering::Relaxed);
         // JSON output must never be colorized or interrupted by spinners.

@@ -1,0 +1,177 @@
+## EXE 需求規格
+
+project_name=Rayfish
+本專案名=rayfish
+
+本檔為本倉庫 Windows 可攜 exe 之唯一權威，自洽、可單檔讀寫與驗收。
+
+### 1) 打包與環境需求
+
+本專案為 **Rust**（crate `rayfish`，二進位目標名 `ray`），**不是** Python／tkinter／PyInstaller。建置與產物以本節與 **§7** 為準；**不**使用 `build.py`、PyInstaller、`requirements-win*.txt`。
+
+- **專案根目錄固定路徑與檔名**（目錄可為空，但須存在或於建置流程中建立）：
+  - 子目錄：`build\`、`dist\`、`icons\`、`screenshot\`
+  - `main.py`：檔名保留（佔位；不可當執行入口）
+  - `version_info.txt`：Win32 版本字串之可讀來源，納入版控；實際嵌入由 `build.rs`（winres）在編譯 `ray.exe` 時寫入 PE
+  - 建置批次檔：`build_windows.bat`（本專實際建置）、`build_win10.bat`（呼叫前者）、`build_win7.bat`（明示不產 Win7）
+- **Win7 版：不實作、不產出。** 理由：Wintun 0.14、WebView2、rustc 1.91 皆以 Windows 10 x64 為下限。不得產出 `bm-rayfish_win7.exe`。
+- **Win10 版產物檔名**：`bm-rayfish.exe`（**檔名不含版本**）。Cargo 仍編譯 `target\x86_64-pc-windows-msvc\release\ray.exe`，打包時改名。
+- **無法單檔內嵌執行環境之例外（Wintun）**：隧道驅動為 WireGuard 已簽名之 `wintun.dll`，靜態連進 PE 會破壞驅動簽名。`wintun.dll` **必須與 exe 同目錄並排**。可攜包為 **zip**（exe + dll），不是單一 self-contained PE。
+- 建置使用 `build\` 作暫存 staging；`dist\` 放 `bm-rayfish-<Cargo版本>.zip`。**不**把 exe／dll 複製到專案根目錄。`dist\` **不清空 zip**（亦可能含 Android APK，勿刪）。`build\` 在打包結束後清空內容、保留資料夾。
+- 上游 MSI（`scripts/build-windows-msi.ps1`、`wix\`）**不得改動**；本路徑與 MSI 平行，互不呼叫。
+- 批次檔結束碼明確；echo 使用 **英文**。
+- **Windows 檔案版本資訊**（工作管理員／檔案內容）：
+  - `CompanyName`：`[B.M] 圓周率 3.14`
+  - `FileDescription` 與 `ProductName`：`[B.M] {project_name} V{Cargo版本} By. [B.M] 圓周率 3.14`（目前 Cargo 為 0.4.0，故為 `V0.4.0`；**只** `{project_name}` 隨語系變，版本號取自 `Cargo.toml` 而非寫死 1.0）
+  - `filevers` / `prodvers`：與 Cargo 對齊之 `(major, minor, patch, 0)`，例如 `(0, 4, 0, 0)`
+  - `FileVersion` / `ProductVersion` 字串與 Cargo 版本相同（例如 `0.4.0`）
+  - `StringTable` `'040404B0'`；Translation `[0x0404, 1200]`
+  - `InternalName`：`bm-rayfish`
+  - `OriginalFilename`：`bm-rayfish.exe`（即使 Cargo 目標名為 `ray.exe`）
+  - `version_info.txt` 與 winres 嵌入內容須一致；建置**不得**覆寫 `version_info.txt`
+
+### 2) 進程管理（防多開）
+
+僅 **`ray gui` 原生視窗路徑**（不含 `--no-open`、不含普通 CLI）啟用。同一支 `bm-rayfish.exe` 當 CLI（`status` 等）使用時**不**搶 Mutex，以免殺掉儀表板。
+
+- 短名：`bm-rayfish`（不依 exe 檔名）。
+- 全域 Mutex：`Global\bm-rayfish`。
+- Named Pipe：`\\.\pipe\bm-rayfish`。
+- 後開殺前開：新實例若偵測 Mutex 已被持有，向管線寫入 **1 byte `0x7E`**，再 `WaitForSingleObject`（最長 **120s**）待舊實例結束後接管。
+- 不使用本機 TCP port 當防多開 IPC。
+- 全程靜默，不彈錯誤視窗。
+- exe 改名或換路徑仍只保留最後啟動的 GUI 實例。
+
+### 3) UI 介面與視窗控制
+
+- 儀表板為既有 `gui.html`（WebView2）。網頁字體維持產品設計；**不**套用 tkinter 10pt／WPF FontSize 16。
+- 視窗標題格式：`[B.M] {project_name} V{Cargo版本} By. [B.M] 圓周率 3.14`
+  - 只有 `{project_name}` 依 `settings.languages` 切換。
+- 圖示：
+  - 視窗／工作列：`icons/icon.ico`（編譯期嵌入 PE；執行期亦內嵌 PNG）
+  - 系統匣：`icons/icon.png`
+- 視窗行為：
+  - 固定寬度 860。高度跟著儀表板內容：關閉進階較矮、開啟進階較高。使用者不可調整尺寸。
+  - 無最大化按鈕。
+  - 最小化：主視窗隱藏，僅留系統匣（工作列可隱藏）。
+  - 關閉：結束整個 GUI 行程。
+- 主視窗可見時：工作列 + 系統匣同時存在。
+
+### 4) 啟動座標與系統匣交互
+
+- 啟動時主視窗在第一螢幕 **(100, 100)**（實體像素）。
+- 系統匣：Windows `tray-icon`（tao 事件迴圈）。回呼經 `EventLoopProxy` 回到視窗執行緒，不在工作執行緒直接操作視窗。
+- **還原**：系統匣**左鍵單擊**（`TrayIconEvent::Click`）視為隱藏預設動作；顯示視窗、移到 (100, 100)、置前。文案鍵 `tray_restore` 供選單／輔助用途；Windows 上左鍵即還原。
+- 右鍵選單（上到下）：
+  1. **下載更新**（僅當 §4.1 發現新版本；在 GitHub **正上方**）；文案鍵 `download_update`；**僅點擊時**下載。
+  2. **GitHub**（固定英文 `GitHub`，不進 JSON、不翻譯）→ 開啟 `https://github.com/BoringMan314/bm-rayfish`
+  3. **關於**（鍵 `about`）→ `http://exnormal.com:81/`；失敗靜默
+  4. **離開**（鍵 `exit`）
+- 語系切換後就地重建系統匣選單與 `tooltip`（一般視窗標題）；**不**重啟匣執行緒為常態。
+- 匣提示文字永遠是視窗／產品標題，不輪播「有新版本」。
+
+### 4.1) 更新檢查與下載
+
+- **實作**。僅 GUI 原生視窗**啟動時檢查一次**（防重入）；不輪詢。
+- `GET https://api.github.com/repos/BoringMan314/bm-rayfish/releases/latest`
+- `User-Agent`：`bm-rayfish`；逾時 15s。
+- 解析 `tag_name` 為 `major.minor.patch`（可去前綴 `v`／`V`）；遠端**大於** `CARGO_PKG_VERSION` 才算新版。
+- 失敗／已最新／tag 無法解析／沒有合適 zip asset：完全靜默。
+- 發行型態：**zip**。點「下載更新」後將 asset 存到 **exe 同目錄**，檔名 `bm-rayfish-V{tag}.zip`（`V` 與 tag 對齊，tag 可含或不含前導 v）。不覆寫執行中的 exe；不自動解壓、不安裝、不重啟。同名檔已存在則跳過。下載失敗靜默。
+- 有新版時：系統匣 GitHub 上方出現「下載更新」；視窗標題每 **3 秒**與「有新版本：…」（鍵 `update_available`，`{ver}` 為遠端版本）輪播。匣 tooltip 不輪播。
+
+### 5) 多語言循環切換（JSON）
+
+- 檔名：exe 同層 `bm-rayfish.json`（Win10；無 Win7 檔）。
+- 不存在則寫入內建預設。解析失敗或驗證不過：**不**備份、**不** `.broken`；覆寫為內建預設。靜默。
+- 目前語系：`settings.languages`（字串，必須是 `languages` 的一個鍵）。
+- 循環：內建序 `zh_TW` → `zh_CN` → `ja_JP` → `en_US`（僅含實際存在之鍵），其餘自訂代碼接在後、依 JSON 出現序。儀表板循環鈕顯示當前 `language_name`。
+- **內層嚴格、外層可擴**：每個語系物件鍵集必須與內建參考（`zh_TW`）**完全一致**，值皆為字串；缺鍵／多鍵／型別不符即整份覆寫預設。
+- **產品名**僅鍵 `project_name`。不得寫死於原生標題；不得併用 `app_title` 等別名。
+- 原生可見字（標題、系統匣關於／離開／還原／下載更新／更新輪播）讀 `languages[當前]`。
+- 儀表板其餘字串在 `src/cli/gui-i18n.js`，由 `settings.languages` 對應 `zh-TW`／`zh-CN`／`ja`／`en` 注入；自訂語系代碼之儀表板回退英文，原生標題仍用該代碼之 `project_name`。
+- **GitHub** 選單字樣不進 JSON。
+
+內建參考鍵：`language_name`、`project_name`、`settings`、`about`、`exit`、`tray_restore`、`download_update`、`update_available`。
+
+#### 預設 JSON
+
+```json
+{
+  "settings": { "languages": "zh_TW" },
+  "languages": {
+    "zh_TW": {
+      "language_name": "繁體中文",
+      "project_name": "Rayfish",
+      "settings": "設定",
+      "about": "關於",
+      "exit": "離開",
+      "tray_restore": "顯示視窗",
+      "download_update": "下載更新",
+      "update_available": "有新版本：{ver}"
+    },
+    "zh_CN": {
+      "language_name": "简体中文",
+      "project_name": "Rayfish",
+      "settings": "设置",
+      "about": "关于",
+      "exit": "离开",
+      "tray_restore": "显示窗口",
+      "download_update": "下载更新",
+      "update_available": "有新版本：{ver}"
+    },
+    "ja_JP": {
+      "language_name": "日本語",
+      "project_name": "Rayfish",
+      "settings": "設定",
+      "about": "バージョン情報",
+      "exit": "終了",
+      "tray_restore": "ウィンドウを表示",
+      "download_update": "更新をダウンロード",
+      "update_available": "新しいバージョン：{ver}"
+    },
+    "en_US": {
+      "language_name": "English",
+      "project_name": "Rayfish",
+      "settings": "Settings",
+      "about": "About",
+      "exit": "Exit",
+      "tray_restore": "Show window",
+      "download_update": "Download update",
+      "update_available": "New version: {ver}"
+    }
+  }
+}
+```
+
+### 6) 驗收標準
+
+- 乾淨 Win10 x64：解壓 zip 後，`bm-rayfish.exe` 與 `wintun.dll` 同層即可跑 GUI（需 WebView2 Runtime；無 Rust 工具鏈）。**無 Win7 產物。**
+- 連續啟動 GUI 兩次以上，只留最後一個。
+- 最小化進系統匣；關閉結束程序。
+- 系統匣左鍵還原後前置並移到 (100, 100)。
+- 選單含 GitHub（關於上方）、關於（exnormal）、離開；開啟失敗靜默。
+- §4.1：啟動查一次；無新版或失敗無提示；有新版時匣內 GitHub 上方「下載更新」，點擊後 zip 落到 exe 旁且檔名含版號；標題輪播、匣提示不輪播。
+- 語言切換寫入 JSON，重啟後仍生效；手動新增合格語系節點後循環鈕可切到。
+- 例外靜默，不彈錯誤窗，不中斷主流程。
+
+### 7) 本專建置（Rust）
+
+```
+build_windows.bat [nopause]
+```
+
+等價：`build_win10.bat`。需要：Rust、`x86_64-pc-windows-msvc` target、MSVC 連線器（winres 用 `rc.exe`）。
+
+```
+cargo -q build --release --locked --target x86_64-pc-windows-msvc --features desktop --bin ray
+```
+
+`scripts/pack-windows-portable.ps1` 下載並校驗 Wintun 0.14.1 `amd64\wintun.dll`（SHA-256 與 MSI 腳本相同），寫入：
+
+- `bm-rayfish.exe`
+- `wintun.dll`
+
+zip：`dist\bm-rayfish-<version>.zip`（內含 `bm-rayfish.exe`、`wintun.dll`）。
+
+`build_win7.bat` 印出不支援並以結束碼 1 離開。

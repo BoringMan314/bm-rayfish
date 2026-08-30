@@ -9,6 +9,8 @@
 //! It also sets the Windows main-thread stack reserve; see [`STACK_RESERVE`].
 
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 /// Stack reserved for the main thread of `ray.exe`, matching the 8 MiB Linux
@@ -51,5 +53,60 @@ fn main() {
             _ => format!("-Wl,--stack,{STACK_RESERVE}"),
         };
         println!("cargo:rustc-link-arg-bins={arg}");
+        embed_windows_resources();
     }
+}
+
+#[allow(dead_code)]
+fn embed_windows_resources() {
+    println!("cargo:rerun-if-changed=icons/icon.ico");
+    println!("cargo:rerun-if-changed=version_info.txt");
+    let version = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".into());
+    let mut nums = version.split(['.', '-']);
+    let major: u64 = nums.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let minor: u64 = nums.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let patch: u64 = nums.next().and_then(|s| s.parse().ok()).unwrap_or(0);
+    let title = format!("[B.M] Rayfish V{version} By. [B.M] 圓周率 3.14");
+    let icon = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("icons")
+        .join("icon.ico");
+    let icon = icon.display().to_string().replace('\\', "\\\\");
+    let rc = PathBuf::from(env::var("OUT_DIR").unwrap()).join("ray.rc");
+    let body = format!(
+        r#"#pragma code_page(65001)
+1 VERSIONINFO
+FILEVERSION {major},{minor},{patch},0
+PRODUCTVERSION {major},{minor},{patch},0
+FILEFLAGSMASK 0x3f
+FILEFLAGS 0x0
+FILEOS 0x40004
+FILETYPE 0x1
+FILESUBTYPE 0x0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040404B0"
+        BEGIN
+            VALUE "CompanyName", "[B.M] 圓周率 3.14"
+            VALUE "FileDescription", "{title}"
+            VALUE "FileVersion", "{version}"
+            VALUE "InternalName", "bm-rayfish"
+            VALUE "LegalCopyright", "[B.M] 圓周率 3.14"
+            VALUE "OriginalFilename", "bm-rayfish.exe"
+            VALUE "ProductName", "{title}"
+            VALUE "ProductVersion", "{version}"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0404, 1200
+    END
+END
+1 ICON "{icon}"
+"#
+    );
+    fs::write(&rc, body).expect("write ray.rc");
+    embed_resource::compile_for(&rc, ["ray"], embed_resource::NONE)
+        .manifest_optional()
+        .expect("embed Windows icon and version resource");
 }

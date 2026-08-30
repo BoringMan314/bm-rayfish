@@ -25,6 +25,15 @@ That's the whole idea. The rest of this README is the details.
 
 ---
 
+<p align="center">
+  <img src="screenshot/screenshot01.png" alt="Windows dashboard before the service is started">
+</p>
+<p align="center">
+  <img src="screenshot/screenshot02.png" alt="Windows dashboard with a live network">
+</p>
+
+---
+
 ## Why Rayfish
 
 - **No infrastructure.** There's no control server to host or trust. Peers find each other through a DHT and connect directly. The only "server" is whoever ran `ray create`, and they can be offline once everyone's admitted.
@@ -82,7 +91,7 @@ sudo ray up    # installs the system service if needed, then activates the VPN
 ```
 
 The installer drops the `ray` binary in `/usr/local/bin` (override with
-`INSTALL_DIR`) and verifies its checksum. It's [`install.sh`](install.sh) in
+`INSTALL_DIR`) and verifies its checksum. It's `[install.sh](install.sh)` in
 this repo, so you can read it before you run it. To build from source instead,
 `cargo build` and see [Building](#building).
 

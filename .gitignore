@@ -34,6 +34,13 @@ android/.idea/
 # Packaged APKs from build_android.bat
 /dist/
 
+# Leftover Windows portable copies (no longer written here)
+/bm-rayfish.exe
+/wintun.dll
+/bm-rayfish.json
+/build/*
+!/build/.gitkeep
+
 # proptest failure seeds: generated locally, none are tracked here
 *.proptest-regressions
 
